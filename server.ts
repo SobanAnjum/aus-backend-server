@@ -285,8 +285,8 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
-  // Health check endpoint
-  app.get('/api/health', (req, res) => {
+  // Health check endpoint (for uptime pingers & monitors)
+  app.get(['/', '/health', '/api/health'], (req, res) => {
     res.json({
       status: 'healthy',
       service: 'A u.S Booking System API',
