@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "strict": false
+  },
+  "include": ["server.ts", "src/**/*"]
+}

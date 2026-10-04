@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: aus-api-server
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: "A u.S Beratung <onboarding@resend.dev>"
+      - key: ADMIN_NOTIFICATION_EMAIL
+        sync: false
