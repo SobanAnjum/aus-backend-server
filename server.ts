@@ -159,8 +159,21 @@ async function startServer() {
   const httpServer = http.createServer(app);
 
   // ==================== WEBSOCKET REALTIME CHAT ENGINE ====================
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const wss = new WebSocketServer({ noServer: true });
   const roomSockets = new Map<string, Set<WebSocket>>();
+
+  // Resilient upgrade handler: accepts both /ws and //ws (handles client path variance)
+  httpServer.on('upgrade', (request, socket, head) => {
+    const rawPath = (request.url || '').split('?')[0];
+    const cleanPath = rawPath.replace(/\/+/g, '/');
+    if (cleanPath === '/ws') {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
 
   function broadcastToRoom(roomId: string, event: { type: string; data?: any; roomId?: string }) {
     const clients = roomSockets.get(roomId);
@@ -271,16 +284,33 @@ async function startServer() {
     next();
   });
 
-  // Middleware for CORS
-  const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-    : true;
+  // Middleware for CORS - Fully permissive for Vercel, localhost & custom domains
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id, x-user-name, x-user-role, x-user-email, x-admin-portal, apikey, *'
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
 
   app.use(cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => callback(null, true),
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-user-name', 'x-user-role'],
+    allowedHeaders: ['*'],
   }));
 
   app.use(express.json({ limit: '10mb' }));

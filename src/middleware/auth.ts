@@ -185,17 +185,21 @@ export const requireAuth = async (
     return next();
   }
 
-  // Allow fallback if user role or sender identity is supplied
+  // Allow fallback if user role or sender identity is supplied, or general room endpoint is accessed
   if (
     req.headers['x-user-role'] === 'customer' ||
+    req.headers['x-user-id'] ||
     req.body?.senderRole === 'customer' ||
-    req.body?.uploaderRole === 'customer'
+    req.body?.uploaderRole === 'customer' ||
+    (req.params?.roomId && req.params.roomId.startsWith('general-'))
   ) {
+    const customerId = (req.headers['x-user-id'] as string) || 
+      (req.params?.roomId ? req.params.roomId.replace('general-', '') : 'customer-session');
     req.user = {
-      id: (req.headers['x-user-id'] as string) || req.body?.senderId || req.body?.uploaderId || 'customer-session',
-      uid: (req.headers['x-user-id'] as string) || req.body?.senderId || req.body?.uploaderId || 'customer-session',
-      email: (req.headers['x-user-email'] as string) || 'mandant@aus-beratung.de',
-      name: (req.headers['x-user-name'] as string) || req.body?.senderName || req.body?.uploaderName || 'Mandant',
+      id: customerId,
+      uid: customerId,
+      email: (req.headers['x-user-email'] as string) || req.body?.customerEmail || 'mandant@aus-beratung.de',
+      name: (req.headers['x-user-name'] as string) || req.body?.customerName || req.body?.senderName || 'Mandant',
       role: 'customer',
     };
     return next();
@@ -205,6 +209,19 @@ export const requireAuth = async (
   const origin = req.headers.origin || req.headers.referer || '';
   if (origin.includes('admin') || req.headers['x-admin-portal'] === 'true' || process.env.NODE_ENV !== 'production') {
     req.user = defaultAdminUser;
+    return next();
+  }
+
+  // Allow customer portal fallback for vercel / portal domains
+  if (origin.includes('customer') || origin.includes('vercel.app')) {
+    const customerId = (req.headers['x-user-id'] as string) || (req.params?.roomId ? req.params.roomId.replace('general-', '') : 'customer-session');
+    req.user = {
+      id: customerId,
+      uid: customerId,
+      email: (req.headers['x-user-email'] as string) || 'mandant@aus-beratung.de',
+      name: (req.headers['x-user-name'] as string) || 'Mandant',
+      role: 'customer',
+    };
     return next();
   }
 
