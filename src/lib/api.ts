@@ -3,15 +3,16 @@
 // Central API Configuration & Helper for Vercel / Heroku deployment
 
 export const API_BASE_URL: string = (
+  (import.meta as any).env?.API_URL ||
   (import.meta as any).env?.VITE_API_URL ||
-  (typeof process !== 'undefined' ? process.env?.VITE_API_URL : '') ||
+  (typeof process !== 'undefined' ? (process.env?.API_URL || process.env?.VITE_API_URL) : '') ||
   ''
 ).replace(/\/+$/, '');
 
 /**
  * Returns full URL for an API endpoint.
- * In local dev (when VITE_API_URL is empty), returns relative path e.g. "/api/appointments".
- * In production (when VITE_API_URL is "https://your-api.herokuapp.com"), returns "https://your-api.herokuapp.com/api/appointments".
+ * In local dev (when API_URL is empty), returns relative path e.g. "/api/appointments".
+ * In production (when API_URL is "https://your-backend.com"), returns "https://your-backend.com/api/appointments".
  */
 export function getApiUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
