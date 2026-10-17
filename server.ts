@@ -284,34 +284,75 @@ async function startServer() {
     next();
   });
 
-  // Middleware for CORS - Fully permissive for Vercel, localhost & custom domains
+  // ==================== CORS CONFIGURATION ====================
+  // Read CORS_ORIGIN environment variable (comma-separated list of allowed origins)
+  const envCorsOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map(o => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
+  const defaultAllowedOrigins = [
+    'https://aus-customer-portal.vercel.app',
+    'https://aus-admin-portal.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:5173',
+  ];
+
+  const allowedOriginsSet = new Set([...defaultAllowedOrigins, ...envCorsOrigins]);
+
+  function isOriginAllowed(requestOrigin?: string): boolean {
+    if (!requestOrigin) return true; // Non-browser clients (Postman, server-to-server, health monitor)
+    const normalized = requestOrigin.trim().replace(/\/+$/, '');
+    
+    // Explicit match with configured origins
+    if (allowedOriginsSet.has(normalized)) return true;
+    
+    // Wildcard in env
+    if (envCorsOrigins.includes('*') || process.env.CORS_ORIGIN === '*') return true;
+
+    // Any Vercel preview or production deployment (*.vercel.app)
+    if (/^https:\/\/[a-z0-9-_]+\.vercel\.app$/i.test(normalized)) return true;
+
+    // Any localhost or 127.0.0.1 origin on any port
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalized)) return true;
+
+    // Any Render domain (*.onrender.com)
+    if (/^https:\/\/[a-z0-9-_]+\.onrender\.com$/i.test(normalized)) return true;
+
+    return false;
+  }
+
+  // Unified Bulletproof CORS Middleware
   app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
+    const requestOrigin = req.headers.origin;
+
+    if (requestOrigin && isOriginAllowed(requestOrigin)) {
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
-    } else {
+      res.setHeader('Vary', 'Origin');
+    } else if (!requestOrigin) {
       res.setHeader('Access-Control-Allow-Origin', '*');
     }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id, x-user-name, x-user-role, x-user-email, x-admin-portal, apikey, *'
-    );
+
+    const requestMethod = (req.headers['access-control-request-method'] as string) || 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD';
+    res.setHeader('Access-Control-Allow-Methods', requestMethod);
+
+    const clientReqHeaders = req.headers['access-control-request-headers'] as string | undefined;
+    const defaultHeaders = 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id, x-user-name, x-user-role, x-user-email, x-admin-portal, apikey, Cache-Control, Pragma, Range';
+    res.setHeader('Access-Control-Allow-Headers', clientReqHeaders ? `${defaultHeaders}, ${clientReqHeaders}` : defaultHeaders);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, etag');
     res.setHeader('Access-Control-Max-Age', '86400');
 
     if (req.method === 'OPTIONS') {
-      return res.sendStatus(204);
+      return res.status(204).end();
     }
     next();
   });
-
-  app.use(cors({
-    origin: (origin, callback) => callback(null, true),
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['*'],
-  }));
 
   app.use(express.json({ limit: '10mb' }));
 
@@ -1349,6 +1390,21 @@ async function startServer() {
       });
     });
   }
+
+  // Global Error Handler to guarantee clean JSON and CORS preservation on unhandled errors
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[SERVER ERROR]', err);
+    const origin = req.headers.origin;
+    if (origin && isOriginAllowed(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    }
+    const statusCode = typeof err?.status === 'number' ? err.status : (typeof err?.statusCode === 'number' ? err.statusCode : 500);
+    res.status(statusCode).json({
+      error: err?.message || 'Interner Serverfehler.',
+    });
+  });
 
   // Start HTTP and WebSocket server
   httpServer.listen(PORT, '0.0.0.0', () => {
